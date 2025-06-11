@@ -194,7 +194,7 @@ async function fetchAllWorksheetData(worksheets) {
 async function sendDataToAPI() {
   try {
     const payload = { dashboard: dashboardName, data: worksheetData };
-    const res = await fetch("https://final-7wmf.onrender.com/api/store_data", {
+    const res = await fetch("https://salesbackend-6hvd.onrender.com/api/store_data", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
@@ -220,7 +220,7 @@ $('#narrativeBtn').on('click', generateNarrative);
 async function generateNarrative() {
   if (!dashboardName || !worksheetData) return;
   try {
-    const res = await fetch("https://final-7wmf.onrender.com/api/ask", {
+    const res = await fetch("https://salesbackend-6hvd.onrender.com/api/ask", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -243,7 +243,7 @@ function sendMessage() {
   if (!q || !dashboardName) return;
   appendUserMessage(q);
   $('#user_input').val('');
-  fetch("https://final-7wmf.onrender.com/api/ask", {
+  fetch("https://salesbackend-6hvd.onrender.com/api/ask", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ dashboard: dashboardName, question: q })
