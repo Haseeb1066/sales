@@ -383,6 +383,7 @@ function appendAIMessage(rawText) {
 function escapeHtml(s) {
   return $('<div>').text(s).html();
   }
+
 function formatAndHighlight(text) {
   const malls = [
     "Sindh Lucky One Mall", "Punjab Fortress Square", "Punjab Emporium Mall",
@@ -399,26 +400,26 @@ function formatAndHighlight(text) {
       line = line.replace(re, `<span class="highlight">${mall}</span>`);
     });
 
-    // Highlight dollar values
-    line = line.replace(/\$\d{1,3}(?:,\d{3})*(?:\.\d+)?/g, match => {
+    // Highlight PKR or $ currency values
+    line = line.replace(/(PKR\s*|\$)\d{1,3}(?:,\d{3})*(?:\.\d+)?/g, match => {
       return `<span class="highlight" style="background-color:#f3e5f5; color:#6a1b9a; font-weight:bold; padding:2px 4px; border-radius:4px;">${match}</span>`;
     });
 
-    // Highlight percentages with parentheses
+    // Highlight percentages with parentheses, e.g., (4.5%)
     line = line.replace(/(\()([-+]?\d+(\.\d+)?%)\)/g, (_, open, percent) => {
       const bg = percent.startsWith('-') ? '#ffcdd2' : '#c8e6c9';
       const fg = percent.startsWith('-') ? '#b71c1c' : '#1b5e20';
       return `(<span style="background-color:${bg}; color:${fg}; font-weight:bold; padding:2px 6px; border-radius:4px;">${percent}</span>)`;
     });
 
-    // Highlight standalone percentages (e.g. -67.9%)
+    // Highlight standalone percentages (e.g. +11.8%)
     line = line.replace(/([-+]\d+(\.\d+)?%)/g, match => {
       const bg = match.startsWith('-') ? '#ffcdd2' : '#c8e6c9';
       const fg = match.startsWith('-') ? '#b71c1c' : '#1b5e20';
       return `<span style="background-color:${bg}; color:${fg}; font-weight:bold; padding:2px 6px; border-radius:4px;">${match}</span>`;
     });
 
-    // Bold numeric values with commas (not percentages or currency)
+    // Bold numeric values with commas (not currency or percentages)
     line = line.replace(/\b\d{1,3}(?:,\d{3})+\b/g, match => {
       return `<strong>${match}</strong>`;
     });
