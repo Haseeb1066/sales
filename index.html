@@ -9,6 +9,8 @@
   <link rel="stylesheet" href="https://cdn.datatables.net/v/bs4/dt-1.10.18/datatables.min.css">
   <script src="https://code.jquery.com/jquery-3.3.1.min.js"></script>
   <script src="https://cdn.datatables.net/v/bs4/dt-1.10.18/datatables.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+
 
   <!-- Tableau Extensions -->
   <script src="/lib/tableau.extensions.1.latest.js"></script>
@@ -41,13 +43,15 @@
       color: #673ab7;
       font-family: "Bookman Old Style", serif;
     }
-    .highlight {
+    /* .highlight {
       font-weight: bold;
       color: #6a1b9a;
       background-color: #f3e5f5;
       padding: 2px 4px;
       border-radius: 4px;
-    }
+    } */
+
+
     #chat_box {
       flex: 1;
       height: 400px;
@@ -59,21 +63,16 @@
       margin-bottom: 15px;
       scroll-behavior: smooth;
     }
-    /* .chat-input {
-      display: flex;
-      gap: 10px;
-    } */
-
     .chat-input {
       display: flex;
-      flex-wrap: wrap; /* allows wrapping on smaller screens */
+      flex-wrap: nowrap; /* Keep everything on one line */
       gap: 8px;
       padding: 10px;
       box-sizing: border-box;
     }
     .chat-input input {
-      flex: 1 1 auto; /* grow and shrink as needed */
-      min-width: 150px;
+      flex: 1 1 auto; /* Let it grow and shrink */
+      min-width: 0;   /* Important: prevents overflow on very small screens */
     }
     .chat-input button {
       flex: 0 0 auto;
@@ -126,32 +125,22 @@
       align-self: flex-start;
       text-align: left;
     }
-    /* @media (max-width: 480px) {
-      .chat-container {
-        padding: 10px;
-        border-radius: 12px;
-      }
-      #chat_box { height: 300px; }
-      #send_button {
-        padding: 8px 12px;
-        font-size: 0.9rem;
-      }
-      #chat_box { height: 300px; }
+
+
+    @media (max-width: 480px) {
+      #send_button,
       #narrativeBtn {
         padding: 8px 12px;
         font-size: 0.9rem;
       }
-    } */
 
-    @media (max-width: 480px) {
-    .chat-input {
-      flex-direction: column;
-      align-items: stretch;
-    }
-
-    .chat-input input,
     .chat-input button {
-      width: 100%;
+      flex: 0 0 auto; /* Keep buttons fixed size */
+      padding: 10px 20px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
     }
     .chat-container {
         padding: 10px;
@@ -159,29 +148,69 @@
       }
       #chat_box { height: 300px; }
       #send_button {
-        padding: 8px 12px;
-        font-size: 0.9rem;
+        background-color: #4CAF50;
+        color: white;
       }
       #chat_box { height: 300px; }
       #narrativeBtn {
-        padding: 8px 12px;
-        font-size: 0.9rem;
+        background-color: #7e57c2;
+        color: white;
       }
+      .fullscreen-loader {
+        position: fixed;
+        top: 0; left: 0;
+        width: 100%; height: 100%;
+        background-color: rgba(255, 255, 255, 0.8);
+        z-index: 9999;
+        display: none; /* Initially hidden */
+        align-items: center;
+        justify-content: center;
+      }
+
+      .spinner {
+        width: 60px;
+        height: 60px;
+        border: 6px solid #ccc;
+        border-top-color: #7e57c2;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+
   }
   </style>
+  <style>
+    .highlight {
+      font-weight: bold;
+      padding: 2px 6px;
+      border-radius: 4px;
+      display: inline-block;
+    }
+
+
+</style>
+
 </head>
 <body>
   <div class="chat-container">
     <div class="chat-header">AIsha</div>
-    <div id="chat_box"></div>
+    <div id="chat_box">
+      <div id="loader" style="display: none; text-align: center; margin: 10px 0;">
+      <span style="display: inline-block; width: 30px; height: 30px; border: 4px solid #ccc; border-top-color: #7e57c2; border-radius: 50%; animation: spin 0.8s linear infinite;"></span>
+      </div>
+    </div>
     <div class="chat-input">
       <input type="text" id="user_input" placeholder="Ask me something about the dashboard..." />
+
       <button id="send_button">Send</button>
       <button id="narrativeBtn">Narrative</button>
       <div id="narrativeOutput"></div>
-
     </div>
   </div>
+
 <script>
 'use strict';
 let worksheetData = null;
@@ -193,23 +222,15 @@ $(document).ready(function () {
     const dashboard = tableau.extensions.dashboardContent.dashboard;
     dashboardName = dashboard.name;
     const worksheets = dashboard.worksheets;
-
-    // Initial data fetch and narrative
     worksheetData = await fetchAllWorksheetData(worksheets);
     await sendDataToAPI();
-
-    // Listen for parameter changes
     (await dashboard.getParametersAsync()).forEach(param => {
       param.addEventListener(tableau.TableauEventType.ParameterChanged, async () => {
         worksheetData = await fetchAllWorksheetData(worksheets);
         await sendDataToAPI();
       });
-    });
-
-    // Listen for filter changes
+      });
     registerFilterListeners();
-
-    // Chat UI events
     $('#send_button').on('click', sendMessage);
     $('#user_input').keypress(function (e) {
       if (e.which === 13 && !e.shiftKey) {
@@ -217,10 +238,24 @@ $(document).ready(function () {
         sendMessage();
       }
     });
+
+    $('#narrativeBtn').on('click', generateNarrative);
   }).catch(err => console.error('Initialization error:', err));
 });
+function showLoader() {
+  const chatBox = document.getElementById('chat_box');
+  const loader = document.getElementById('loader');
 
-// Fetch data from all worksheets
+  // Move loader to bottom of chat messages
+  chatBox.appendChild(loader);
+  loader.style.display = 'block';
+
+  // Scroll to bottom
+  chatBox.scrollTop = chatBox.scrollHeight;
+}
+function hideLoader() {
+  document.getElementById('loader').style.display = 'none';
+}
 async function fetchAllWorksheetData(worksheets) {
   return Promise.all(worksheets.map(ws =>
     ws.getSummaryDataAsync().then(tbl => ({
@@ -229,40 +264,59 @@ async function fetchAllWorksheetData(worksheets) {
       data: tbl.data.map(r => r.map(c => c.formattedValue))
     }))
   ));
-}
+  }
 
 
-
-async function sendDataToAPI() {
+  async function sendDataToAPI() {
+  showLoader();
   try {
-    const payload = { dashboard: dashboardName, data: worksheetData };
-    const res = await fetch("https://salesbackend-6hvd.onrender.com/api/store_data", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
+    const payload = {
+      dashboard: dashboardName,
+      data: worksheetData
+    };
+
+    // 🔸 Check raw JSON size (before compression)
+    const jsonString = JSON.stringify(payload);
+    console.log("📦 Raw data size (chars):", jsonString.length);
+
+    // 🔸 Optional: Show how many rows per worksheet
+    worksheetData.forEach(ws => {
+      console.log(`📄 ${ws.worksheet} — Rows: ${ws.data.length}`);
     });
+
+    // 🔸 Compress JSON payload
+    const compressed = pako.gzip(jsonString);
+    console.log("📉 Compressed size (bytes):", compressed.length);
+
+    const res = await fetch("http://127.0.0.1:5000/api/store_data", {
+      method: "POST",
+      headers: {
+        "Content-Encoding": "gzip",
+        "Content-Type": "application/json"
+      },
+      body: compressed
+    });
+
     if (res.ok) {
-      console.log("✅ Data sent to API");
+      console.log("✅ Compressed data sent to API");
     } else {
       console.error("❌ API error:", res.status);
     }
   } catch (err) {
     console.error("❌ sendDataToAPI failed:", err);
+  } finally {
+    hideLoader();
   }
 }
 
 
 
-$('#narrativeBtn').on('click', generateNarrative);
 
-
-
-
-// Ask your Flask API for a narrative summary
 async function generateNarrative() {
   if (!dashboardName || !worksheetData) return;
+  showLoader();
   try {
-    const res = await fetch("https://salesbackend-6hvd.onrender.com/api/ask", {
+    const res = await fetch("http://127.0.0.1:5000/api/ask", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -276,26 +330,26 @@ async function generateNarrative() {
   } catch (err) {
     console.error("❌ generateNarrative failed:", err);
     appendAIMessage(`Error: ${err.message}`);
+  } finally {
+    hideLoader();
   }
-}
-
-// Send user-typed question and display response
+  }
 function sendMessage() {
   const q = $('#user_input').val().trim();
   if (!q || !dashboardName) return;
   appendUserMessage(q);
   $('#user_input').val('');
-  fetch("https://salesbackend-6hvd.onrender.com/api/ask", {
+  showLoader();
+  fetch("http://127.0.0.1:5000/api/ask", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ dashboard: dashboardName, question: q })
   })
   .then(res => res.json())
   .then(data => appendAIMessage(data.answer || data.error))
-  .catch(err => appendAIMessage(`Error: ${err.message}`));
-}
-
-// Register filter-change listeners for all worksheets
+  .catch(err => appendAIMessage(`Error: ${err.message}`))
+  .finally(() => hideLoader());
+  }
 function registerFilterListeners() {
   const dash = tableau.extensions.dashboardContent.dashboard;
   unregisterHandlerFunctions.forEach(fn => fn());
@@ -308,44 +362,76 @@ function registerFilterListeners() {
     });
     unregisterHandlerFunctions.push(unregister);
   });
-}
-
-// UI: Append user message
+  }
 function appendUserMessage(text) {
   $('#chat_box').append(`<div class="user-msg">${escapeHtml(text)}</div>`);
   $('#chat_box').scrollTop($('#chat_box')[0].scrollHeight);
-}
-
-// UI: Append AI message with highlighting
+  }
 function appendAIMessage(rawText) {
   const formatted = formatAndHighlight(rawText || "");
-  $('#chat_box').append(`<div class="ai-msg">${formatted}</div>`);
-  $('#chat_box').scrollTop($('#chat_box')[0].scrollHeight);
+  const loader = document.getElementById('loader');
+  const msgDiv = document.createElement('div');
+  msgDiv.className = 'ai-msg';
+  msgDiv.innerHTML = formatted;
+
+  const chatBox = document.getElementById('chat_box');
+  chatBox.insertBefore(msgDiv, loader); // Insert before loader
+  chatBox.scrollTop = chatBox.scrollHeight;
 }
 
-// Escape HTML to avoid injection
+
 function escapeHtml(s) {
   return $('<div>').text(s).html();
-}
-
-// Format text with list bullets and highlights
+  }
 function formatAndHighlight(text) {
   const malls = [
     "Sindh Lucky One Mall", "Punjab Fortress Square", "Punjab Emporium Mall",
-    "Sindh Dolmen Mall Clifton", "Sindh Boulevard Mall"
+    "Sindh Dolmen Mall Clifton", "Sindh Boulevard Mall",
+    "Fortress Square", "Dolmen Mall Clifton", "Boulevard Mall", "Emporium Mall", "Lucky One Mall"
   ];
+
   const lines = text.split('\n').filter(l => l.trim());
+
   const items = lines.map(line => {
+    // Highlight mall/store names
     malls.forEach(mall => {
       const re = new RegExp(mall, 'gi');
       line = line.replace(re, `<span class="highlight">${mall}</span>`);
     });
-    line = line.replace(/\$\d{1,3}(?:,\d{3})*(?:\.\d+)?/g, '<span class="highlight">$&</span>');
-    line = line.replace(/\b\d{1,3}(?:,\d{3})+\b/g, '<span class="highlight">$&</span>');
+
+    // Highlight dollar values
+    line = line.replace(/\$\d{1,3}(?:,\d{3})*(?:\.\d+)?/g, match => {
+      return `<span class="highlight" style="background-color:#f3e5f5; color:#6a1b9a; font-weight:bold; padding:2px 4px; border-radius:4px;">${match}</span>`;
+    });
+
+    // Highlight percentages with parentheses
+    line = line.replace(/(\()([-+]?\d+(\.\d+)?%)\)/g, (_, open, percent) => {
+      const bg = percent.startsWith('-') ? '#ffcdd2' : '#c8e6c9';
+      const fg = percent.startsWith('-') ? '#b71c1c' : '#1b5e20';
+      return `(<span style="background-color:${bg}; color:${fg}; font-weight:bold; padding:2px 6px; border-radius:4px;">${percent}</span>)`;
+    });
+
+    // Highlight standalone percentages (e.g. -67.9%)
+    line = line.replace(/([-+]\d+(\.\d+)?%)/g, match => {
+      const bg = match.startsWith('-') ? '#ffcdd2' : '#c8e6c9';
+      const fg = match.startsWith('-') ? '#b71c1c' : '#1b5e20';
+      return `<span style="background-color:${bg}; color:${fg}; font-weight:bold; padding:2px 6px; border-radius:4px;">${match}</span>`;
+    });
+
+    // Bold numeric values with commas (not percentages or currency)
+    line = line.replace(/\b\d{1,3}(?:,\d{3})+\b/g, match => {
+      return `<strong>${match}</strong>`;
+    });
+
     return `<li>${line}</li>`;
   }).join('');
+
   return `<ul style="padding-left:20px;margin:0;">${items}</ul>`;
 }
+
+
+
 </script>
+
 </body>
 </html>
