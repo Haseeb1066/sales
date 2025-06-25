@@ -217,19 +217,53 @@ let worksheetData = null;
 let dashboardName = null;
 const unregisterHandlerFunctions = [];
 
-$(document).ready(function () {
+// $(document).ready(function () {
+//   tableau.extensions.initializeAsync().then(async () => {
+//     const dashboard = tableau.extensions.dashboardContent.dashboard;
+//     dashboardName = dashboard.name;
+//     const worksheets = dashboard.worksheets;
+//     worksheetData = await fetchAllWorksheetData(worksheets);
+//     await sendDataToAPI();
+//     (await dashboard.getParametersAsync()).forEach(param => {
+//       param.addEventListener(tableau.TableauEventType.ParameterChanged, async () => {
+//         worksheetData = await fetchAllWorksheetData(worksheets);
+//         await sendDataToAPI();
+//       });
+//       });
+//     registerFilterListeners();
+//     $('#send_button').on('click', sendMessage);
+//     $('#user_input').keypress(function (e) {
+//       if (e.which === 13 && !e.shiftKey) {
+//         e.preventDefault();
+//         sendMessage();
+//       }
+//     });
+
+//     $('#narrativeBtn').on('click', generateNarrative);
+//   }).catch(err => console.error('Initialization error:', err));
+// });
+
+
+
+  $(document).ready(function () {
   tableau.extensions.initializeAsync().then(async () => {
     const dashboard = tableau.extensions.dashboardContent.dashboard;
     dashboardName = dashboard.name;
     const worksheets = dashboard.worksheets;
-    worksheetData = await fetchAllWorksheetData(worksheets);
-    await sendDataToAPI();
+
+    // ✅ Delay to allow Tableau dashboard to fully apply filters/params
+    setTimeout(async () => {
+      worksheetData = await fetchAllWorksheetData(worksheets);
+      await sendDataToAPI();
+    }, 1000); // adjust time as needed
+
     (await dashboard.getParametersAsync()).forEach(param => {
       param.addEventListener(tableau.TableauEventType.ParameterChanged, async () => {
         worksheetData = await fetchAllWorksheetData(worksheets);
         await sendDataToAPI();
       });
-      });
+    });
+
     registerFilterListeners();
     $('#send_button').on('click', sendMessage);
     $('#user_input').keypress(function (e) {
@@ -242,6 +276,7 @@ $(document).ready(function () {
     $('#narrativeBtn').on('click', generateNarrative);
   }).catch(err => console.error('Initialization error:', err));
 });
+
 function showLoader() {
   const chatBox = document.getElementById('chat_box');
   const loader = document.getElementById('loader');
