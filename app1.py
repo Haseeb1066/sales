@@ -94,20 +94,23 @@ def ask():
                 f"top-performing regions or products, underperforming areas, and any significant changes or outliers. "
                 f"Use clear and simple language suitable for business stakeholders. "
                 f"Include the time period in each reported metric where applicable. "
+                f"When reporting changes or comparisons, always include the '+' or '−' sign based on direction. For example: +12.5% for increase, −7.3% for decrease."
                 f"{'The current period is ' + current_period + '. ' if current_period else ''}"
                 f"{'The reference period is ' + reference_period + '.' if reference_period else ''}"
             )
         else:
             prompt = (
-                f"The user has asked a question based on this Tableau dashboard data:\n\n"
-                f"{data_text}\n\n"
-                f"{'The current period is ' + current_period + '. ' if current_period else ''}"
-                f"{'The comparison is made against the reference period ' + reference_period + '.' if reference_period else ''}\n"
+                f"You are a Tableau sales dashboard analyst answering a specific business query.\n\n"
+                f"Here is the extracted dashboard data:\n\n"
+                f"{data}\n\n"
+                f"Please use only actual monthly data when asked about individual months like 'May 2025' or 'May 2024'. "
+                f"Do not use Year-to-Date (YTD) summary rows (such as those marked with 'YTD Dec-24' or 'Null' in date fields) "
+                f"unless explicitly asked for YTD totals.\n\n"
+                f"{'The comparison is made against ' + reference_period + '.' if reference_period else ''}\n"
                 f"Question: {question}\n\n"
-                f"Only provide the relevant answer without explaining how it was calculated. "
-                f"Always include both time periods in the sales figures or comparisons you provide."
-                f"Always include the current and reference period (month and year) in every metric label, such as: 'Current Sales (May 2025)' and 'Reference Sales (April 2025)'."
+                f"Only provide the relevant answer without explaining how it was calculated."
             )
+
 
         # 🔹 Call OpenAI API
         response = client.chat.completions.create(
