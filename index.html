@@ -288,7 +288,7 @@ async function fetchAllWorksheetData(worksheets) {
     const compressed = pako.gzip(jsonString);
     console.log("📉 Compressed size (bytes):", compressed.length);
 
-    const res = await fetch("http://127.0.0.1:5000/api/store_data", {
+    const res = await fetch("https://salesbackend-6hvd.onrender.com/api/store_data", {
       method: "POST",
       headers: {
         "Content-Encoding": "gzip",
@@ -313,7 +313,7 @@ async function generateNarrative() {
   if (!dashboardName || !worksheetData) return;
   showLoader();
   try {
-    const res = await fetch("http://127.0.0.1:5000/api/ask", {
+    const res = await fetch("https://salesbackend-6hvd.onrender.com/api/ask", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -337,7 +337,7 @@ function sendMessage() {
   appendUserMessage(q);
   $('#user_input').val('');
   showLoader();
-  fetch("http://127.0.0.1:5000/api/ask", {
+  fetch("https://salesbackend-6hvd.onrender.com/api/ask", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ dashboard: dashboardName, question: q })
