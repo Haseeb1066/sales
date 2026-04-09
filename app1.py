@@ -8,6 +8,8 @@ from dotenv import load_dotenv
 import re
 from threading import Lock
 
+import tiktoken
+
 load_dotenv()
 
 app = Flask(__name__)
@@ -24,8 +26,14 @@ Rules:
 - For follow-ups, stay consistent with your earlier answers in this conversation when they refer to the same metrics.
 - Be concise unless the user asks for detail."""
 
-MAX_DASHBOARD_CHARS = 120_000
-MAX_HISTORY_MESSAGES = 6  # 6 Q&A turns (user + assistant pairs)
+# Character cap when building worksheet text (first pass); token cap below is the hard limit.
+MAX_DASHBOARD_CHARS = 80_000
+# Dense tables tokenize worse than prose; stay under org TPM (e.g. 200k) with room for system/history/output.
+MAX_DASHBOARD_TOKENS = 55_000
+MAX_HISTORY_MESSAGES = 4  # user + assistant pairs; keeps prior turns smaller
+MAX_ASSISTANT_HISTORY_CHARS = 6_000  # long narratives in history stack up in token count
+
+_TIKTOKEN_ENC = None  # lazy: tiktoken.encoding_for_model may download BPE on first use
 
 # Store dashboard data in memory
 dashboard_data_store = {}
@@ -36,6 +44,28 @@ _chat_lock = Lock()
 
 def _session_key(dashboard: str, session_id: str) -> str:
     return f"{dashboard}\t{session_id}"
+
+
+def truncate_to_token_budget(text: str, max_tokens: int) -> str:
+    global _TIKTOKEN_ENC
+    try:
+        if _TIKTOKEN_ENC is None:
+            _TIKTOKEN_ENC = tiktoken.encoding_for_model("gpt-4o-mini")
+        enc = _TIKTOKEN_ENC
+        ids = enc.encode(text)
+        if len(ids) <= max_tokens:
+            return text
+        return enc.decode(ids[:max_tokens]) + (
+            "\n\n[... truncated: dashboard text exceeded token budget; narrow filters or ask about one sheet ...]"
+        )
+    except Exception:
+        # ~3 chars/token is conservative for dense numeric tables vs. TPM limits
+        approx_chars = max(1, max_tokens) * 3
+        if len(text) <= approx_chars:
+            return text
+        return text[: approx_chars - 200] + (
+            "\n\n[... truncated: size limit (tiktoken unavailable) ...]"
+        )
 
 
 def compact_dashboard_text(data, max_chars: int = MAX_DASHBOARD_CHARS) -> str:
@@ -66,7 +96,7 @@ def compact_dashboard_text(data, max_chars: int = MAX_DASHBOARD_CHARS) -> str:
             parts.append("\n".join(lines))
         return "\n\n".join(parts)
 
-    max_rows = 50_000
+    max_rows = 2_000
     text = build(max_rows)
     while len(text) > max_chars and max_rows > 10:
         max_rows = max(max_rows // 2, 10)
@@ -175,6 +205,7 @@ def ask():
             return jsonify({"error": "No data available for this dashboard."}), 400
 
         dashboard_text = compact_dashboard_text(data)
+        dashboard_text = truncate_to_token_budget(dashboard_text, MAX_DASHBOARD_TOKENS)
         data_for_regex = dashboard_text
 
         if not reference_period:
@@ -214,13 +245,20 @@ def ask():
 
         messages = [{"role": "system", "content": SYSTEM_PROMPT}]
         for m in prior:
-            messages.append({"role": m["role"], "content": m["content"]})
+            content = m["content"]
+            if m["role"] == "assistant" and len(content) > MAX_ASSISTANT_HISTORY_CHARS:
+                content = (
+                    content[: MAX_ASSISTANT_HISTORY_CHARS - 120]
+                    + "\n[... earlier reply truncated for context size ...]"
+                )
+            messages.append({"role": m["role"], "content": content})
         messages.append({"role": "user", "content": user_message})
 
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=messages,
             temperature=0,
+            max_tokens=4096,
         )
 
         answer = response.choices[0].message.content
