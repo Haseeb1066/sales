@@ -332,7 +332,7 @@ def ask_dashboard(
     # Narratives need broad context; Q&A uses tools when enabled.
     tools_mode = use_tools and not narrative
 
-    user_message = build_user_message_v2(
+    user_message = build_user_message(
         question,
         current_period,
         reference_period,
