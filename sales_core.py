@@ -312,7 +312,21 @@ def ask_dashboard(
     use_tools: bool | None = None,
 ) -> dict[str, Any]:
     if dashboard not in dashboard_data_store:
-        return {"error": "Dashboard data not found"}
+        available = list_dashboards()
+        hint = (
+            f" Available dashboards: {available}."
+            if available
+            else " No dashboards stored yet — open the Tableau extension and wait for data sync."
+        )
+        return {
+            "error": "Dashboard data not found",
+            "dashboard_requested": dashboard,
+            "dashboards_available": available,
+            "hint": (
+                f"Requested '{dashboard}'." + hint
+                + " If testing locally, set API_BASE to your Flask URL (e.g. http://127.0.0.1:5000)."
+            ),
+        }
     data = dashboard_data_store[dashboard]
     if not data:
         return {"error": "No data available for this dashboard."}
