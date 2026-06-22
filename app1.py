@@ -34,8 +34,13 @@ def store_data():
         dashboard = content.get("dashboard")
         data = content.get("data")
 
+        if not dashboard:
+            return jsonify({"error": "dashboard name is required"}), 400
+        if data is None:
+            return jsonify({"error": "data is required"}), 400
+
         core.dashboard_data_store[dashboard] = data
-        print(f"✅ Received {len(str(data))} characters of data")
+        print(f"✅ Stored dashboard '{dashboard}' ({len(str(data))} chars)")
 
         return jsonify({"status": "success"})
     except Exception as e:
