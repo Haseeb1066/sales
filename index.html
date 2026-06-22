@@ -226,11 +226,18 @@
 
 <script>
 'use strict';
-/** Same host as Flask when testing locally; use full URL when the HTML is opened without your backend. */
-const API_BASE = 'https://salesbackend-6hvd.onrender.com';
+/** Use same host as the page when local; Render URL when extension is served from elsewhere. */
+const API_BASE = (function () {
+  const h = window.location.hostname;
+  if (h === 'localhost' || h === '127.0.0.1') {
+    return 'http://127.0.0.1:5000';
+  }
+  return 'https://salesbackend-6hvd.onrender.com';
+})();
 
 let worksheetData = null;
 let dashboardName = null;
+let dataSynced = false;
 let sessionId = (typeof crypto !== 'undefined' && crypto.randomUUID)
   ? crypto.randomUUID()
   : ('sess-' + String(Date.now()) + '-' + Math.random().toString(36).slice(2));
@@ -349,9 +356,12 @@ async function fetchAllWorksheetData(worksheets) {
     });
 
     if (res.ok) {
-      console.log("✅ Compressed data sent to API");
+      dataSynced = true;
+      console.log("✅ Compressed data sent to API for dashboard:", dashboardName);
     } else {
-      console.error("❌ API error:", res.status);
+      dataSynced = false;
+      const errBody = await res.text();
+      console.error("❌ API store_data error:", res.status, errBody);
     }
   } catch (err) {
     console.error("❌ sendDataToAPI failed:", err);
@@ -362,6 +372,10 @@ async function fetchAllWorksheetData(worksheets) {
 
 async function generateNarrative() {
   if (!dashboardName || !worksheetData) return;
+  if (!dataSynced) {
+    appendAIMessage("Still syncing dashboard data — wait a moment and try again.");
+    return;
+  }
   showLoader();
   try {
     const res = await fetch(API_BASE + "/api/ask", {
@@ -374,7 +388,7 @@ async function generateNarrative() {
       })
     });
     const data = await res.json();
-    const text = data.answer || data.error || "No narrative generated.";
+    const text = data.answer || data.hint || data.error || "No narrative generated.";
     appendAIMessage(text);
   } catch (err) {
     console.error("❌ generateNarrative failed:", err);
@@ -386,6 +400,10 @@ async function generateNarrative() {
 function sendMessage() {
   const q = $('#user_input').val().trim();
   if (!q || !dashboardName) return;
+  if (!dataSynced) {
+    appendAIMessage("Still syncing dashboard data — wait a moment and try again.");
+    return;
+  }
   appendUserMessage(q);
   $('#user_input').val('');
   showLoader();
@@ -395,7 +413,7 @@ function sendMessage() {
     body: JSON.stringify({ dashboard: dashboardName, session_id: sessionId, question: q })
   })
   .then(res => res.json())
-  .then(data => appendAIMessage(data.answer || data.error))
+  .then(data => appendAIMessage(data.answer || data.hint || data.error))
   .catch(err => appendAIMessage(`Error: ${err.message}`))
   .finally(() => hideLoader());
   }
